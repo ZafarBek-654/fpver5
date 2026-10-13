@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Подключение базы | Birga</title>
+<style>
+:root{--bg:#f4f5fb;--cd:#fff;--tx:#12131a;--mu:#6b6f85;--bd:#e3e5f0;--ac:#6d4aff}
+@media(prefers-color-scheme:dark){:root{--bg:#0b0c12;--cd:#151722;--tx:#eef0ff;--mu:#9296b0;--bd:#252838}}
+*{box-sizing:border-box}body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:20px;background:var(--bg);color:var(--tx)}
+h1{margin:.2em 0}h2{margin:1.4em 0 .3em}small,.mu{color:var(--mu)}code{background:var(--bd);padding:1px 5px;border-radius:5px}
+.r{background:var(--cd);border:1px solid var(--bd);border-left:5px solid #999;border-radius:10px;padding:10px 14px;margin:8px 0}
+.ok{border-left-color:#12a36b}.er{border-left-color:#e5484d}.wa{border-left-color:#d98a00}
+textarea{width:100%;min-height:170px;border:1px solid var(--bd);border-radius:10px;background:var(--cd);color:var(--tx);padding:10px;font:13px/1.4 ui-monospace,monospace}
+button,a.b{font:inherit;font-weight:700;cursor:pointer;border:0;border-radius:10px;padding:10px 16px;background:var(--ac);color:#fff;text-decoration:none;display:inline-block;margin:4px 4px 4px 0}
+button.g{background:var(--cd);color:var(--tx);border:1px solid var(--bd)}
+</style></head><body>
+<h1>🔧 Подключение базы данных</h1>
+<p class="mu">Эта страница проверяет Firebase и сама собирает файл <code>firebase.js</code> — руками ничего править не нужно.</p>
+
+<h2>Шаг A. Вставь конфиг из Firebase</h2>
+<p class="mu">Firebase → ⚙ Project settings → Your apps → Web (<code>&lt;/&gt;</code>) → скопируй весь блок кода и вставь сюда как есть (лишние строки не мешают).</p>
+<textarea id="cfg" placeholder='const firebaseConfig = {&#10;  apiKey: "AIza...",&#10;  authDomain: "...firebaseapp.com",&#10;  projectId: "...",&#10;  ...&#10;};'></textarea>
+<div><button onclick="go()">Проверить и создать firebase.js</button></div>
+<div id="o"></div>
+
+<h2>Статус сайта сейчас</h2>
+<p class="mu">Что видит сайт в загруженном на хостинг <code>firebase.js</code>.</p>
+<div id="s"></div>
+<p><a href="index.html">← На сайт</a></p>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase.js"></script>
+<script src="localdb.js"></script>
+<script>
+const $=i=>document.getElementById(i);
+const mk=(box)=>(c,t,h)=>$(box).insertAdjacentHTML("beforeend",`<div class="r ${c}"><b>${c=="ok"?"✅":c=="er"?"❌":"⚠️"} ${t}</b>${h?"<br><small>"+h+"</small>":""}</div>`);
+const add=mk("o"),adds=mk("s");
+const KEYS=["apiKey","authDomain","projectId","storageBucket","messagingSenderId","appId"];
+function parse(t){const c={};KEYS.forEach(k=>{const m=t.match(new RegExp(k+"\\s*[:=]\\s*[\"'`]([^\"'`]+)[\"'`]"));if(m)c[k]=m[1].trim()});if(!c.authDomain&&c.projectId)c.authDomain=c.projectId+".firebaseapp.com";if(!c.storageBucket&&c.projectId)c.storageBucket=c.projectId+".appspot.com";return c}
+function tpl(c){return `// Конфиг Firebase для Birga (создан в setup.html)
+const firebaseConfig = {
+${KEYS.map(k=>"  "+k+": "+JSON.stringify(c[k]||"")+",").join("\n")}
+};
+// Адрес ИИ-прокси (Cloudflare Worker из ai-worker.js). Пусто = встроенный базовый режим.
+const BIRGA_AI_URL = "";
+window.FB = {};
+if (firebaseConfig.apiKey !== "YOUR_API_KEY" && window.firebase) {
+  firebase.initializeApp(firebaseConfig);
+  FB.auth = firebase.auth();
+  FB.db = firebase.firestore();
+  FB.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+}
+`}
+const T=p=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r({code:"timeout",message:"нет ответа за 9 секунд"}),9000))]);
+let FILE="";
+function cp(){navigator.clipboard.writeText(FILE).then(()=>alert("Скопировано. Вставь в firebase.js целиком."),()=>alert("Не удалось скопировать — используй кнопку «Скачать»."))}
+async function go(){
+  $("o").innerHTML="";const c=parse($("cfg").value);
+  if(!c.apiKey||!c.projectId||!c.appId)return add("er","Не нашёл apiKey / projectId / appId","Скопируй блок firebaseConfig из Firebase (Project settings → Your apps → Web) и вставь целиком.");
+  add("ok","Конфиг распознан","projectId: <code>"+c.projectId+"</code>");
+  if(!c.apiKey.startsWith("AIza"))add("wa","apiKey выглядит необычно","Обычно он начинается с «AIza». Проверь, что скопировал правильное значение.");
+  if(!window.firebase)add("er","Библиотеки Firebase не загрузились","Нет интернета или их блокирует расширение/антивирус (gstatic.com). Проверка пропущена, но файл ниже всё равно можно скачать.");
+  else{
+    const app=firebase.initializeApp(c,"t"+Date.now());
+    try{const o=await T(app.firestore().collection("meta").doc("owner").get());
+      add("ok","Firestore работает и правила опубликованы",o.exists?"Владелец уже зарегистрирован.":"Владельца ещё нет: <b>первым зарегистрируйся САМ — ты станешь Преадмином.</b>")}
+    catch(e){const k=e.code||"";add("er","Firestore: "+(k||e.message),
+      k=="permission-denied"?"Правила не опубликованы. Firestore Database → вкладка Rules → удали всё, вставь содержимое <code>firestore.rules</code> → Publish.":
+      /not-found|failed-precondition|unavailable|timeout/.test(k)||/does not exist/i.test(e.message||"")?"База не создана или нет связи. Firestore Database → Create database (Production mode).":String(e.message))}
+    try{await T(app.auth().signInWithEmailAndPassword("setup-check@example.com","not-a-real-password-1"))}
+    catch(e){const k=e.code||"";
+      if(k=="auth/operation-not-allowed")add("er","Вход по Email/Password выключен","Authentication → Sign-in method → Email/Password → включи первый переключатель → Save.");
+      else if(k=="auth/operation-not-supported-in-this-environment")add("wa","Вход проверить не вышло","Страница открыта как файл. Загрузи сайт на хостинг и открой <code>setup.html</code> по ссылке https://… — тогда проверка входа сработает.");
+      else if(k=="auth/unauthorized-domain")add("er","Этот адрес не разрешён","Authentication → Settings → Authorized domains → Add domain: <code>"+location.hostname+"</code>");
+      else if(/api-key|invalid-api/.test(k))add("er","apiKey не подошёл","Скопируй конфиг из Firebase заново.");
+      else if(k=="timeout"||k=="auth/network-request-failed")add("wa","Нет ответа от Firebase Auth","Проверь интернет и попробуй ещё раз.");
+      else add("ok","Authentication работает","Ответ: "+k+" (для проверочного входа это нормально)")}
+  }
+  FILE=tpl(c);const url=URL.createObjectURL(new Blob([FILE],{type:"text/javascript"}));
+  add("ok","Файл firebase.js готов",`<a class="b" href="${url}" download="firebase.js">⬇ Скачать firebase.js</a><button class="g" onclick="cp()">Скопировать текст</button><br>Положи его в папку сайта вместо старого <code>firebase.js</code> и загрузи на хостинг.`);
+}
+/* статус загруженного сайта */
+(()=>{
+  adds("wa","Адрес: <code>"+location.host+"</code>");
+  if(typeof firebaseConfig==="undefined")return adds("er","firebase.js не выполнился","В файле ошибка (например, вставлен лишний код). Создай файл заново в шаге A.");
+  if(firebaseConfig.apiKey==="YOUR_API_KEY")return adds("wa","В загруженном firebase.js ещё нет твоих ключей","Сайт работает на встроенной демо-базе. Сделай шаг A и замени файл.");
+  adds("ok","Ключи найдены","projectId: <code>"+firebaseConfig.projectId+"</code>");
+  if(FB.local)return adds("er","Но Firebase не запустился","Причина: "+FB.why);
+  adds("ok","Сайт работает на общей базе Firebase ✅","Зарегистрируйся и открой сайт с другого устройства — аккаунт будет тот же.");
+})();
+</script></body></html>
